@@ -3,7 +3,6 @@ module Main where
 import Control.Applicative
 import Data.Char
 import Data.Tuple
-import Data.Maybe
 
 type XMLAttribute = (String, String)
 data XMLValue
@@ -72,25 +71,19 @@ parseAttribute =
 parseWS :: Parser String
 parseWS = parseUntil (not . isSpace)
 
-exhaust :: Parser a -> Parser [a]
-exhaust parser =
-  Parser $ \input ->
-    checkNull $ last $ takeWhile isJust $ iterate f (Just (input, []))
-  where
-    f prev
-      | Nothing <- prev = Nothing
-      | Just (input', output') <- prev = do
-        (input'', output'') <- runParser parser input'
-        return (input'', output' ++ [output''])
-    checkNull x
-      | Just (_, []) <- x = Nothing
-      | otherwise = x
+failOnEmpty :: Parser [a] -> Parser [a]
+failOnEmpty p =
+  Parser $ \input -> do
+    (input', output) <- runParser p input
+    if null output
+      then Nothing
+      else Just (input', output)
 
 parseAttributes :: Parser [XMLAttribute]
-parseAttributes = exhaust (parseWS *> parseAttribute) <|> pure []
+parseAttributes = many (parseWS *> parseAttribute)
 
 parseTags :: Parser XMLValue
-parseTags = XMLArray <$> exhaust (parseWS *> parseTag)
+parseTags = XMLArray <$> failOnEmpty (many (parseWS *> parseTag))
 
 parseTag :: Parser XMLValue
 parseTag =
